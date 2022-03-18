@@ -106,9 +106,6 @@ def global_subnets(cgx, domain, add):
             bgp_id2n = {}
             for bgp in cgx.get.bgppeers(site_id=site['id'], element_id=element).cgx_content["items"]:
                 bgp_id2n[bgp["id"]] = bgp["name"]
-                
-            
-
             for element in element_list:
                 for bgpstatus in cgx.get.bgppeers_status(site_id=site["id"], element_id=element).cgx_content["items"]:
                     if bgpstatus["state"] == "Established" and bgpstatus["direction"] == "lan":
