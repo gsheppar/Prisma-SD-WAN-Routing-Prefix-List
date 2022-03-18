@@ -124,10 +124,10 @@ def global_subnets(cgx, domain, add):
         print("\nAll Branchs are complete and now creating/updating Routing Prefixes\n")
         prefix_name = domain + "-Global-Subnets"
         new_prefix_list = []
-        num = 5
+        num = 1
         for prefix in global_subnet_list:
             new_prefix_list.append({"order":num,"permit":True,"prefix":prefix,"ge":0,"le":0})
-            num += 5
+            num += 1
         for site in hub_list:
             for elements in cgx.get.elements().cgx_content["items"]:
                 if elements["site_id"] == site:
@@ -148,10 +148,10 @@ def global_subnets(cgx, domain, add):
                                         break
                                 if not exsists:
                                     add_list.append(prefix)
-                            num = len(filter_json['prefix_filter_list']) * 5
+                            num = len(filter_json['prefix_filter_list'])
                             if add_list:
                                 for prefix in add_list:
-                                    num += 5
+                                    num += 1
                                     filter_json['prefix_filter_list'].append({"order":num,"permit":True,"prefix":prefix,"ge":0,"le":0})
                                 resp = cgx.put.routing_prefixlists(site_id=site, element_id=elements["id"], routing_prefixlist_id=prefix_filter_id, data=filter_json)
                                 if not resp:
