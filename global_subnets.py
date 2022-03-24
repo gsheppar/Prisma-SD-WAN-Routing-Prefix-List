@@ -107,15 +107,20 @@ def global_subnets(cgx, domain, add):
             for bgp in cgx.get.bgppeers(site_id=site['id'], element_id=element).cgx_content["items"]:
                 bgp_id2n[bgp["id"]] = bgp["name"]
             for element in element_list:
+                bgp_list = []
+                for bgppeers in cgx.get.bgppeers(site_id=site["id"], element_id=element).cgx_content["items"]:
+                   if bgppeers["scope"] == "global":
+                       bgp_list.append(bgppeers["id"])
                 for bgpstatus in cgx.get.bgppeers_status(site_id=site["id"], element_id=element).cgx_content["items"]:
-                    if bgpstatus["state"] == "Established" and bgpstatus["direction"] == "lan":
-                        try:
-                            prefixes = cgx.get.bgppeers_reachableprefixes(site_id=site["id"], element_id=element, bgppeer_id=bgpstatus['id']).cgx_content['reachable_ipv4_prefixes']
-                            for prefix in prefixes:
-                                if prefix["network"] not in global_subnet_list:
-                                    global_subnet_list.append(prefix["network"])
-                        except:
-                            print("Unabled to get IPv4 prefixes from BGP peer " + bgp_id2n[bgpstatus['id']])
+                    if bgpstatus["id"] in bgp_list:
+                        if bgpstatus["state"] == "Established" and bgpstatus["direction"] == "lan":
+                            try:
+                                prefixes = cgx.get.bgppeers_reachableprefixes(site_id=site["id"], element_id=element, bgppeer_id=bgpstatus['id']).cgx_content['reachable_ipv4_prefixes']
+                                for prefix in prefixes:
+                                    if prefix["network"] not in global_subnet_list:
+                                        global_subnet_list.append(prefix["network"])
+                            except:
+                                print("Unabled to get IPv4 prefixes from BGP peer " + bgp_id2n[bgpstatus['id']])
     
     if global_subnet_list:
         print("\nAll Branchs are complete and now creating/updating Routing Prefixes\n")
@@ -269,7 +274,12 @@ def go():
     tenant_str = "".join(x for x in cgx_session.tenant_name if x.isalnum()).lower()
     cgx = cgx_session
     add = args['add']
-    domain = input ("Please enter the domain you want? ")
+    print("Domains Found")
+    for domain_find in cgx.get.servicebindingmaps().cgx_content['items']:
+        print(domain_find["name"])
+    
+    
+    domain = input ("\nPlease enter the domain you want? ")
     global_subnets(cgx, domain, add)
     
     # end of script, run logout to clear session.
