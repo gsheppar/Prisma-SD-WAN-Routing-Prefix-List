@@ -15,6 +15,7 @@ import ipaddress
 from csv import DictReader
 import time
 from datetime import datetime, timedelta
+import math
 jdout = cloudgenix.jdout
 
 
@@ -55,7 +56,7 @@ except ImportError:
     CLOUDGENIX_USER = None
     CLOUDGENIX_PASSWORD = None
 
-def global_subnets(cgx, domain, add):    
+def global_subnets(cgx, domain):    
     domain_id = None
     for domain_find in cgx.get.servicebindingmaps().cgx_content['items']:
         if domain == domain_find["name"]:
@@ -87,7 +88,7 @@ def global_subnets(cgx, domain, add):
                         try:
                             if interface['ipv4_config']:
                                 prefix = ipaddress.ip_network(interface['ipv4_config']['static_config']['address'], strict=False)
-                                if prefix not in global_subnet_list:
+                                if str(prefix) not in global_subnet_list:
                                     global_subnet_list.append(str(prefix))
                         except:
                             print("Unabled to get IPv4 config from interface " + interface["name"])
@@ -98,7 +99,7 @@ def global_subnets(cgx, domain, add):
                 for static in cgx.get.staticroutes(site_id=site['id'], element_id=element).cgx_content["items"]:
                     if static["scope"] == "global":
                         prefix = ipaddress.ip_network(static['destination_prefix'], strict=False)
-                        if prefix not in global_subnet_list:
+                        if str(prefix) not in global_subnet_list:
                             global_subnet_list.append(str(prefix))
                        
             ############################## check BGP status ######################################
@@ -125,67 +126,53 @@ def global_subnets(cgx, domain, add):
     if global_subnet_list:
         print("\nAll Branchs are complete and now creating/updating Routing Prefixes\n")
         prefix_name = domain + "-Global-Subnets"
-        new_prefix_list = []
-        num = 1
-        for prefix in global_subnet_list:
-            new_prefix_list.append({"order":num,"permit":True,"prefix":prefix,"ge":0,"le":0})
-            num += 1
-        for site in hub_list:
-            for elements in cgx.get.elements().cgx_content["items"]:
-                if elements["site_id"] == site:
-                    prefix_filter_id = None
-                    for prefix_filter in cgx.get.routing_prefixlists(site_id=site, element_id=elements["id"]).cgx_content['items']:
-                        if prefix_name == prefix_filter['name']:
-                            prefix_filter_id = prefix_filter['id']
-                            filter_json = prefix_filter
         
-                    if prefix_filter_id:
-                        if add:
-                            add_list = []
-                            for prefix in global_subnet_list:
-                                exsists = False
-                                for current_prefix in filter_json['prefix_filter_list']:
-                                    if current_prefix['prefix'] == prefix:
-                                        exsists = True
-                                        break
-                                if not exsists:
-                                    add_list.append(prefix)
-                            num = len(filter_json['prefix_filter_list'])
-                            if add_list:
-                                for prefix in add_list:
-                                    num += 1
-                                    filter_json['prefix_filter_list'].append({"order":num,"permit":True,"prefix":prefix,"ge":0,"le":0})
-                                resp = cgx.put.routing_prefixlists(site_id=site, element_id=elements["id"], routing_prefixlist_id=prefix_filter_id, data=filter_json)
-                                if not resp:
-                                    print (elements["name"] + " Error updating global prefixes " + prefix_name)
-                                else:
-                                    print (elements["name"] + " Updating Routing Prefix" + " with the addtion of " + str(len(add_list)) + " prefixes from the domain " + domain + " global subnets from interface, static and LAN BGP")
-                            else:
-                                print (elements["name"] + " No new prefixes to add to Routing Prefix " + prefix_name)
-                            
-                                    
-                        else:
+        total_lists = math.ceil(len(global_subnet_list) / 64)
+        chunk_size = 60
+    
+        split_prefix_list = list(split(global_subnet_list, chunk_size))
+        
+        total_num = 1
+        for prefix_list in split_prefix_list:
+            new_prefix_name = prefix_name + "-" + str(total_num)
+            total_num += 1
+            num = 1
+            new_prefix_list = []
+            for prefix in prefix_list:
+                new_prefix_list.append({"order":num,"permit":True,"prefix":prefix,"ge":0,"le":0})
+                num += 1
+            for site in hub_list:
+                for elements in cgx.get.elements().cgx_content["items"]:
+                    if elements["site_id"] == site:
+                        prefix_filter_id = None
+                        for prefix_filter in cgx.get.routing_prefixlists(site_id=site, element_id=elements["id"]).cgx_content['items']:
+                            if new_prefix_name == prefix_filter['name']:
+                                prefix_filter_id = prefix_filter['id']
+                                filter_json = prefix_filter
+    
+                        if prefix_filter_id:
                             filter_json['prefix_filter_list'] = new_prefix_list
                             resp = cgx.put.routing_prefixlists(site_id=site, element_id=elements["id"], routing_prefixlist_id=prefix_filter_id, data=filter_json)
                             if not resp:
-                                print (elements["name"] + " Error updating global prefixes " + prefix_name)
+                                print (elements["name"] + " Error updating global prefixes " + new_prefix_name)
+                                print(str(jdout(resp)))
                             else:
-                                print (elements["name"] + " Updating Routing Prefix " + prefix_name + " with " + str(len(global_subnet_list)) + " prefixes from the domain " + domain + " which includes global subnets from interface, static and LAN BGP")
-                            
-                            
-        
-                    else:            
-                        new_prefix = {"name":prefix_name,"description":domain + "Global Subnets","tags":None,"auto_generated":False,"prefix_filter_list":new_prefix_list}
-                        resp = cgx.post.routing_prefixlists(site_id=site, element_id=elements["id"], data=new_prefix)
-                        if not resp:
-                            print (elements["name"] + " Error creating global prefixes " + prefix_name)
-                            print(jdout(resp))
-                        else:
-                            print (elements["name"] + " Creating Routing Prefix " + prefix_name + " with " + str(len(global_subnet_list)) + " prefixes from the domain " + domain + " which includes global subnets from interface, static and LAN BGP")
-
-        
+                                print (elements["name"] + " Updating Routing Prefix " + new_prefix_name + " with " + str(len(prefix_list)) + " prefixes from the domain " + domain + " which includes global subnets from interface, static and LAN BGP")
+                        else:            
+                            new_prefix = {"name":new_prefix_name,"description":domain + "Global Subnets","tags":None,"auto_generated":False,"prefix_filter_list":new_prefix_list}
+                            resp = cgx.post.routing_prefixlists(site_id=site, element_id=elements["id"], data=new_prefix)
+                            if not resp:
+                                print (elements["name"] + " Error creating global prefixes " + new_prefix_name)
+                                print(jdout(resp))
+                            else:
+                                print (elements["name"] + " Creating Routing Prefix " + new_prefix_name + " with " + str(len(prefix_list)) + " prefixes from the domain " + domain + " which includes global subnets from interface, static and LAN BGP")
     return    
 
+
+def split(list_a, chunk_size):
+
+  for i in range(0, len(list_a), chunk_size):
+    yield list_a[i:i + chunk_size]
                                           
 def go():
     ############################################################################
@@ -213,7 +200,6 @@ def go():
     debug_group.add_argument("--debug", "-D", help="Verbose Debug info, levels 0-2", type=int,
                              default=0)
     config_group = parser.add_argument_group('Config', 'These options change how the configuration is generated.')
-    config_group.add_argument('--add', '-A', help='Add only', action='store_true', default=False)
     
     args = vars(parser.parse_args())
                              
@@ -273,14 +259,12 @@ def go():
     # create file-system friendly tenant str.
     tenant_str = "".join(x for x in cgx_session.tenant_name if x.isalnum()).lower()
     cgx = cgx_session
-    add = args['add']
     print("Domains Found")
     for domain_find in cgx.get.servicebindingmaps().cgx_content['items']:
         print(domain_find["name"])
     
-    
     domain = input ("\nPlease enter the domain you want? ")
-    global_subnets(cgx, domain, add)
+    global_subnets(cgx, domain)
     
     # end of script, run logout to clear session.
     cgx_session.get.logout()

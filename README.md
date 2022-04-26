@@ -21,8 +21,7 @@ MIT
  
  - Use the global_subnets.py which will ask for a domain
  1. ./global_subnets.py
-      - Will create a global prefix list in each DC ION based off the domain name you give with all the global prefixes (Interface, Static, LAN BGP)
-	  - If you add the option -A it will only add new entries not remove old ones
+      - Will create/update a global prefix list in each DC ION based off the domain name you give with all the global prefixes (Interface, Static, LAN BGP)
  
 ### Caveats and known issues:
  - This is a PREVIEW release, hiccups to be expected. Please file issues on Github for any problems.
