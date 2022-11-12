@@ -69,6 +69,7 @@ def global_subnets(cgx, domain):
     global_subnet_list = []
     hub_list = []
     site_id2n = {}
+    element_id2n = {}
     for site in cgx.get.sites().cgx_content['items']:
         if site["element_cluster_role"] == "HUB":
             hub_list.append(site["id"])
@@ -79,28 +80,36 @@ def global_subnets(cgx, domain):
             for elements in cgx.get.elements().cgx_content["items"]:
                 if elements["site_id"] == site["id"]:
                     element_list.append(elements["id"])
+                    element_id2n[elements["id"]] = elements["name"]
                         
             ############################## Interface status ######################################
     
             for element in element_list:
-                for interface in cgx.get.interfaces(site_id=site['id'], element_id=element).cgx_content["items"]:
-                    if interface["scope"] == "global":
-                        try:
-                            if interface['ipv4_config']:
-                                prefix = ipaddress.ip_network(interface['ipv4_config']['static_config']['address'], strict=False)
-                                if str(prefix) not in global_subnet_list:
-                                    global_subnet_list.append(str(prefix))
-                        except:
-                            print("Unabled to get IPv4 config from interface " + interface["name"])
+                try:
+                    for interface in cgx.get.interfaces(site_id=site['id'], element_id=element).cgx_content["items"]:
+                        if interface["scope"] == "global":
+                            try:
+                                if interface['ipv4_config']:
+                                    prefix = ipaddress.ip_network(interface['ipv4_config']['static_config']['address'], strict=False)
+                                    if str(prefix) not in global_subnet_list:
+                                        global_subnet_list.append(str(prefix))
+                            except:
+                                print("Unabled to get IPv4 config from interface " + interface["name"])
+                except:
+                    print("Unabled to get interfaces from " + element_id2n[element])
 
             ############################## Static Routes ######################################
     
             for element in element_list:
-                for static in cgx.get.staticroutes(site_id=site['id'], element_id=element).cgx_content["items"]:
-                    if static["scope"] == "global":
-                        prefix = ipaddress.ip_network(static['destination_prefix'], strict=False)
-                        if str(prefix) not in global_subnet_list:
-                            global_subnet_list.append(str(prefix))
+                try:
+                    for static in cgx.get.staticroutes(site_id=site['id'], element_id=element).cgx_content["items"]:
+                        if static["scope"] == "global":
+                            prefix = ipaddress.ip_network(static['destination_prefix'], strict=False)
+                            if str(prefix) not in global_subnet_list:
+                                global_subnet_list.append(str(prefix))
+                except:
+                    print("Unabled to get static routes from " + element_id2n[element])
+                    
                        
             ############################## check BGP status ######################################
             
