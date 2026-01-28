@@ -41,7 +41,7 @@ except ImportError:
     PRISMASASE_CLIENT_SECRET=None
     PRISMASASE_TSG_ID=None
 
-def global_subnets(cgx, domain):    
+def global_subnets(cgx, domain, dc_site):    
     domain_id = None
     for domain_find in cgx.get.servicebindingmaps().cgx_content['items']:
         if domain == domain_find["name"]:
@@ -57,7 +57,8 @@ def global_subnets(cgx, domain):
     element_id2n = {}
     for site in cgx.get.sites().cgx_content['items']:
         if site["element_cluster_role"] == "HUB":
-            hub_list.append(site["id"])
+            if dc_site == site["name"]:
+                hub_list.append(site["id"])
         if site["element_cluster_role"] == "SPOKE" and site["service_binding"] == domain_id:
             print("Checking site " + site["name"])           
             ############################## check if connected ######################################
@@ -67,8 +68,7 @@ def global_subnets(cgx, domain):
                     element_list.append(elements["id"])
                     element_id2n[elements["id"]] = elements["name"]
                         
-            ############################## Interface status ######################################
-    
+            ############################## Interface status ######################################    
             for element in element_list:
                 try:
                     for interface in cgx.get.interfaces(site_id=site['id'], element_id=element).cgx_content["items"]:
@@ -98,24 +98,28 @@ def global_subnets(cgx, domain):
                        
             ############################## check BGP status ######################################
             
-            bgp_id2n = {}
-            for bgp in cgx.get.bgppeers(site_id=site['id'], element_id=element).cgx_content["items"]:
-                bgp_id2n[bgp["id"]] = bgp["name"]
-            for element in element_list:
-                bgp_list = []
-                for bgppeers in cgx.get.bgppeers(site_id=site["id"], element_id=element).cgx_content["items"]:
-                   if bgppeers["scope"] == "global":
-                       bgp_list.append(bgppeers["id"])
-                for bgpstatus in cgx.get.bgppeers_status(site_id=site["id"], element_id=element).cgx_content["items"]:
-                    if bgpstatus["id"] in bgp_list:
-                        if bgpstatus["state"] == "Established" and bgpstatus["direction"] == "lan":
-                            try:
-                                prefixes = cgx.get.bgppeers_reachableprefixes(site_id=site["id"], element_id=element, bgppeer_id=bgpstatus['id']).cgx_content['reachable_ipv4_prefixes']
-                                for prefix in prefixes:
-                                    if prefix["network"] not in global_subnet_list:
-                                        global_subnet_list.append(prefix["network"])
-                            except:
-                                print("Unabled to get IPv4 prefixes from BGP peer " + bgp_id2n[bgpstatus['id']])
+            try:
+                for element in element_list:
+                    bgp_list = []
+                    bgp_id2n = {}
+                    for bgppeers in cgx.get.bgppeers(site_id=site["id"], element_id=element).cgx_content["items"]:
+                       if bgppeers["scope"] == "global":
+                           bgp_list.append(bgppeers["id"])
+                           bgp_id2n[bgppeers["id"]] = bgppeers["name"]
+                
+                    for bgpstatus in cgx.get.bgppeers_status(site_id=site["id"], element_id=element).cgx_content["items"]:
+                        if bgpstatus["id"] in bgp_list:
+                            if bgpstatus["state"] == "Established" and bgpstatus["direction"] == "lan":
+                                try:
+                                    prefixes = cgx.get.bgppeers_reachableprefixes(site_id=site["id"], element_id=element, bgppeer_id=bgpstatus['id']).cgx_content['reachable_ipv4_prefixes']
+                                    for prefix in prefixes:
+                                        if prefix["network"] not in global_subnet_list:
+                                            global_subnet_list.append(prefix["network"])
+                                except:
+                                    print("Unabled to get IPv4 prefixes from BGP peer " + bgp_id2n[bgpstatus['id']])
+            except:
+                print("Failed to check for BGP")
+                            
     
     if global_subnet_list:
         print("\nAll Branchs are complete and now creating/updating Routing Prefixes\n")
@@ -193,7 +197,12 @@ def go():
         print(domain_find["name"])
     
     domain = input ("\nPlease enter the domain you want? ")
-    global_subnets(cgx, domain)
+    for site in cgx.get.sites().cgx_content['items']:
+        if site["element_cluster_role"] == "HUB":
+            print(site["name"])
+            
+    dc_site = input ("\nPlease enter the DC Site you want to create/update these prefixes on? ")
+    global_subnets(cgx, domain, dc_site)
     
     # end of script, run logout to clear session.
     return
