@@ -55,6 +55,7 @@ def global_subnets(cgx, domain, dc_site):
     hub_list = []
     site_id2n = {}
     element_id2n = {}
+    route_list = []
     for site in cgx.get.sites().cgx_content['items']:
         if site["element_cluster_role"] == "HUB":
             if dc_site == site["name"]:
@@ -78,6 +79,10 @@ def global_subnets(cgx, domain, dc_site):
                                     prefix = ipaddress.ip_network(interface['ipv4_config']['static_config']['address'], strict=False)
                                     if str(prefix) not in global_subnet_list:
                                         global_subnet_list.append(str(prefix))
+                                        route_data = {}
+                                        route_data["Site_name"] = site["name"]
+                                        route_data["Route"] = prefix
+                                        route_list.append(route_data)
                             except:
                                 print("Unabled to get IPv4 config from interface " + interface["name"])
                 except:
@@ -92,6 +97,10 @@ def global_subnets(cgx, domain, dc_site):
                             prefix = ipaddress.ip_network(static['destination_prefix'], strict=False)
                             if str(prefix) not in global_subnet_list:
                                 global_subnet_list.append(str(prefix))
+                                route_data = {}
+                                route_data["Site_name"] = site["name"]
+                                route_data["Route"] = prefix
+                                route_list.append(route_data)
                 except:
                     print("Unabled to get static routes from " + element_id2n[element])
                     
@@ -115,6 +124,10 @@ def global_subnets(cgx, domain, dc_site):
                                     for prefix in prefixes:
                                         if prefix["network"] not in global_subnet_list:
                                             global_subnet_list.append(prefix["network"])
+                                            route_data = {}
+                                            route_data["Site_name"] = site["name"]
+                                            route_data["Route"] = prefix["network"]
+                                            route_list.append(route_data)
                                 except:
                                     print("Unabled to get IPv4 prefixes from BGP peer " + bgp_id2n[bgpstatus['id']])
             except:
@@ -165,6 +178,24 @@ def global_subnets(cgx, domain, dc_site):
                                 print(jdout(resp))
                             else:
                                 print (elements["name"] + " Creating Routing Prefix " + new_prefix_name + " with " + str(len(prefix_list)) + " prefixes from the domain " + domain + " which includes global subnets from interface, static and LAN BGP")
+    
+        csv_columns = []        
+        for key in (route_list)[0]:
+            csv_columns.append(key) 
+        csv_file = "routes.csv"
+        try:
+            with open(csv_file, 'w', encoding='utf-8') as csvfile:
+                writer = csv.DictWriter(csvfile, fieldnames=csv_columns)
+                writer.writeheader()
+                for data in route_list:
+                    try:
+                        writer.writerow(data)
+                    except:
+                        print("Failed to write data for row")
+                        print(data)
+                print("\nSaved routes.csv file")
+        except IOError:
+            print("CSV Write Failed")
     else:
         print("No prefixes found to add")
     return    
